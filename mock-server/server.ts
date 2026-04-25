@@ -4,25 +4,16 @@ import cors from 'cors';
 const app = express();
 const port = 3001; 
 
-// Enable URL-encoded form data parsing
+// enable URL-encoded form data parsing
 app.use(express.urlencoded({ extended: true }));
 
-// Middleware to parse JSON bodies
+// middleware to parse JSON bodies
 app.use(cors());
 app.use(express.json());
 
-// Health check - PUT THIS FIRST to test if server is working
+// health check api endpoint
 app.get('/api/health', (req: Request, res: Response) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
-
-// Main messages endpoint
-app.get('/api/messages', (req: Request, res: Response) => {
-  // Simple test response
-  res.json({
-    data: [{ id: 1, content: 'Test message' }],
-    pagination: { page: 1, total: 1 }
-  });
 });
 
 // creating message object
@@ -34,7 +25,7 @@ interface Message {
   isLive: boolean;
 }
 
-// Generate 100,000 static messages
+// creating array of 100,000 messages
 const staticMessages: Message[] = [];
 
 for (let i = 1; i <= 100000; i++) {
@@ -118,16 +109,7 @@ app.get('/api/messages/live', async(req: Request, res: Response) => {
   });
 });
 
-// Chrome DevTools app-specific endpoint
-app.get('/.well-known/appspecific/com.chrome.devtools.json', (req: Request, res: Response) => {
-  res.json({
-    name: 'mock-server',
-    version: '1.0.0',
-    description: 'Mock API server for message app'
-  });
-});
-
-// Start the server
+// start server
 app.listen(port, () => {
   console.log(`Server is running on http://localhost:${port}`);
 });
