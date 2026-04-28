@@ -2,7 +2,7 @@ import express, { Request, Response } from 'express';
 import cors from 'cors';
 
 const app = express();
-const port = 3001; 
+const port = 3001;
 
 // enable URL-encoded form data parsing
 app.use(express.urlencoded({ extended: true }));
@@ -25,7 +25,7 @@ interface Message {
   isLive: boolean;
 }
 
-// creating array of 100,000 messages
+// creating array of 100,000 messages (oldest first, newest last)
 const staticMessages: Message[] = [];
 
 for (let i = 1; i <= 100000; i++) {
@@ -33,12 +33,11 @@ for (let i = 1; i <= 100000; i++) {
     id: i,
     userId: `user_${Math.floor(Math.random() * 1000)}`,
     content: `Message ${i}`,
-    timestamp: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString(),
+    timestamp: new Date(Date.now() - (100000 - i) * 60 * 1000).toISOString(), // Oldest message has oldest timestamp
     isLive: false
   });
 }
 
-// creating empty array for live messages incoming
 let liveMessages: Message[] = [];
 let nextId = 100001;
 
@@ -47,20 +46,24 @@ setInterval(() => {
   const newMessage: Message = {
     id: nextId++,
     userId: `live_user_${Math.floor(Math.random() * 50)}`,
-    content: "New message",
+    content: `New message ${Date.now()}`,
     timestamp: new Date().toISOString(),
     isLive: true
   };
   
-  liveMessages.unshift(newMessage);
-  liveMessages = liveMessages.slice(0, 100);
+  // adds live messages to the end of the array (newest last)
+  liveMessages.push(newMessage);
+  // Keep only last 100 live messages
+  if (liveMessages.length > 100) {
+    liveMessages = liveMessages.slice(-100);
+  }
 }, Math.random() * 2000 + 3000);
 
 // setting 5% failure rate through delayed responses
 const simulateDelay = () => new Promise(resolve => setTimeout(resolve, Math.random() * 500 + 500));
 const shouldFail = () => Math.random() < 0.05;
 
-// get messages api endpoint
+// GET messages api endpoint
 app.get('/api/messages', async(req: Request, res: Response) => {
   await simulateDelay();
 
@@ -71,19 +74,31 @@ app.get('/api/messages', async(req: Request, res: Response) => {
   const cursor = req.query.cursor ? parseInt(req.query.cursor as string) : undefined;
   const limit = Math.min(100, parseInt(req.query.limit as string) || 50);
 
-  const allMessages = [...liveMessages, ...staticMessages];
-  const sortedMessages = [...allMessages].sort((a, b) => b.id - a.id);
-
-  const paginatedMessages = typeof cursor === 'number' && !Number.isNaN(cursor)
-    ? sortedMessages.filter(msg => msg.id < cursor).slice(0, limit)
-    : sortedMessages.slice(0, limit);
-
-  const nextCursor = paginatedMessages.length > 0
-    ? paginatedMessages[paginatedMessages.length - 1].id
-    : null;
-
-  const minMessageId = sortedMessages.length > 0 ? sortedMessages[sortedMessages.length - 1].id : null;
-  const hasMore = nextCursor !== null && minMessageId !== null && nextCursor > minMessageId;
+  // combine existing and live messages
+  const allMessages = [...staticMessages, ...liveMessages];
+  
+  const sortedMessages = [...allMessages].sort((a, b) => a.id - b.id);
+  
+  let paginatedMessages: Message[];
+  let nextCursor: number | null = null;
+  
+  if (typeof cursor === 'number' && !Number.isNaN(cursor)) {
+    // if a cursor is provided, return messages with IDs LESS than the cursor (older messages)
+    // This supports loading older messages when scrolling up
+    paginatedMessages = sortedMessages.filter(msg => msg.id < cursor).slice(-limit);
+  } else {
+    // if no cursor is provided, return the NEWEST messages (for initial load)
+    paginatedMessages = sortedMessages.slice(-limit);
+    console.log('Initial load: total messages:', sortedMessages.length, 'limit:', limit, 'returning IDs:', paginatedMessages[0]?.id, '-', paginatedMessages[paginatedMessages.length - 1]?.id);
+  }
+  
+  if (paginatedMessages.length > 0) {
+    const firstMessage = paginatedMessages[0];
+    const hasMoreMessages = sortedMessages.some(msg => msg.id < firstMessage.id);
+    nextCursor = hasMoreMessages ? firstMessage.id : null;
+  }
+  
+  const hasMore = nextCursor !== null;
 
   res.json({
     data: paginatedMessages,
@@ -94,12 +109,13 @@ app.get('/api/messages', async(req: Request, res: Response) => {
     },
     meta: {
       hasLiveMessages: liveMessages.length > 0,
-      liveCount: liveMessages.length
+      liveCount: liveMessages.length,
+      totalMessages: sortedMessages.length
     }
   });
 });
 
-// live messages api endpoint
+// GET live messages endpoint 
 app.get('/api/messages/live', async(req: Request, res: Response) => {
   await simulateDelay();
 
@@ -107,6 +123,7 @@ app.get('/api/messages/live', async(req: Request, res: Response) => {
     return res.status(500).json({ error: 'Failed to fetch live messages' });
   }
   
+  // Return live messages in order (oldest first)
   res.json({
     data: liveMessages,
     meta: {
@@ -118,4 +135,6 @@ app.get('/api/messages/live', async(req: Request, res: Response) => {
 // start server
 app.listen(port, () => {
   console.log(`Server is running on http://localhost:${port}`);
+  console.log(`Total static messages: ${staticMessages.length}`);
+  console.log(`Message order: Oldest (ID: 1) to Newest (ID: ${staticMessages.length})`);
 });
