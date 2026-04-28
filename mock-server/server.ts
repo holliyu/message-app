@@ -64,27 +64,33 @@ const shouldFail = () => Math.random() < 0.05;
 app.get('/api/messages', async(req: Request, res: Response) => {
   await simulateDelay();
 
-  // returns 500 error based off of simulated delays
   if (shouldFail()) {
     return res.status(500).json({ error: 'Failed to fetch messages' });
   }
 
-  // defines page number and limit of messages per page
-  const page = Math.max(1, parseInt(req.query.page as string) || 1);
+  const cursor = req.query.cursor ? parseInt(req.query.cursor as string) : undefined;
   const limit = Math.min(100, parseInt(req.query.limit as string) || 50);
-  
-  // adds live message arrays and static messages, then paginates this to return specific range of messages
+
   const allMessages = [...liveMessages, ...staticMessages];
-  const start = (page - 1) * limit;
-  const paginatedMessages = allMessages.slice(start, start + limit);
-  
+  const sortedMessages = [...allMessages].sort((a, b) => b.id - a.id);
+
+  const paginatedMessages = typeof cursor === 'number' && !Number.isNaN(cursor)
+    ? sortedMessages.filter(msg => msg.id < cursor).slice(0, limit)
+    : sortedMessages.slice(0, limit);
+
+  const nextCursor = paginatedMessages.length > 0
+    ? paginatedMessages[paginatedMessages.length - 1].id
+    : null;
+
+  const minMessageId = sortedMessages.length > 0 ? sortedMessages[sortedMessages.length - 1].id : null;
+  const hasMore = nextCursor !== null && minMessageId !== null && nextCursor > minMessageId;
+
   res.json({
     data: paginatedMessages,
     pagination: {
-      currentPage: page,
+      nextCursor,
       perPage: limit,
-      total: allMessages.length,
-      totalPages: Math.ceil(allMessages.length / limit)
+      hasMore
     },
     meta: {
       hasLiveMessages: liveMessages.length > 0,
