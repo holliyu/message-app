@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
-import { fetchMessages, fetchLiveMessages, Message } from '@/lib/api-client';
+import { fetchMessages, fetchLiveMessages, searchMessages, Message } from '@/lib/api-client';
 import MessageItem from './MessageItem';
 
 export default function Home() {
@@ -118,34 +118,53 @@ export default function Home() {
     setIsAtBottom(true);
   }, []);
 
-  const performSearch = useCallback((query: string) => {
+  const performSearch = useCallback(async (query: string) => {
     setSearchQuery(query);
 
     if (!query.trim()) {
       setSearchResults([]);
       return;
-  }
+    }
 
-  const results: SearchResult[] = [];
-    messages.forEach((message, index) => {
-      if (message.content.toLowerCase().includes(query.toLowerCase())) {
-        results.push({
-          id: message.id,
-          index: index,
-          content: message.content.substring(0, 100) // preview
-        });
-      }
-    });
-    setSearchResults(results);
-    setSearchQuery(query);
+    try {
+      const result = await searchMessages(query);
+      
+      const resultsWithIndex: SearchResult[] = result.data.map(msg => ({
+        id: msg.id,
+        index: messages.findIndex(m => m.id === msg.id),
+        content: msg.content.substring(0, 100)
+      }));
+      
+      setSearchResults(resultsWithIndex);
+    } catch (error) {
+      console.error('Search error:', error);
+
+      const results: SearchResult[] = [];
+      messages.forEach((message, index) => {
+        if (message.content.toLowerCase().includes(query.toLowerCase())) {
+          results.push({
+            id: message.id,
+            index: index,
+            content: message.content.substring(0, 100)
+          });
+        }
+      });
+      setSearchResults(results);
+    }
   }, [messages]);
 
   // Jump to a specific search result
-  const jumpToResult = useCallback((resultIndex: number) => {
-    if (!virtuosoRef.current) return;
-    
+  const jumpToResult = useCallback(async (resultIndex: number) => {
     const result = searchResults[resultIndex];
     if (!result) return;
+    
+    // if unable to find message, then prompt user to scroll up in order to find it
+    if (result.index === -1) {
+      alert(`Message ${result.id} found but not yet loaded. Scroll up to load older messages, then search again.`);
+      return;
+    }
+    
+    if (!virtuosoRef.current) return;
     
     // Scroll to the target index
     virtuosoRef.current.scrollToIndex({
@@ -167,14 +186,13 @@ export default function Home() {
     <div className="justify-center font-sans dark:bg-black">
       <main className="flex flex-1 w-full flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
         <h1>Welcome</h1>
-        <input
-          type="text"
-          placeholder="Search messages"
-          className="border p-2 rounded w-full mb-4"
-          value={searchQuery}
-          onChange={(e) => performSearch(e.target.value)}
-        />
-        {/* Search Results Dropdown */}
+          <input
+            type="text"
+            placeholder="Search messages..."
+            className="border p-2 rounded w-full pr-10"
+            value={searchQuery}
+            onChange={(e) => performSearch(e.target.value)}
+          />
         {searchResults.length > 0 && (
           <div className="mt-2 border rounded max-h-48 overflow-y-auto">
             {searchResults.map((result, idx) => (

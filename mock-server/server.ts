@@ -1,5 +1,7 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
+import * as fs from 'fs';
+import * as path from 'path';
 
 const app = express();
 const port = 3001;
@@ -25,17 +27,25 @@ interface Message {
   isLive: boolean;
 }
 
-// creating array of 100,000 messages (oldest first, newest last)
-const staticMessages: Message[] = [];
-
-for (let i = 1; i <= 100000; i++) {
-  staticMessages.push({
-    id: i,
-    userId: `user_${Math.floor(Math.random() * 1000)}`,
-    content: `Message ${i}`,
-    timestamp: new Date(Date.now() - (100000 - i) * 60 * 1000).toISOString(), // Oldest message has oldest timestamp
-    isLive: false
-  });
+let staticMessages: Message[] = [];
+try {
+  const messagesPath = path.join(__dirname, 'messages.json');
+  const data = fs.readFileSync(messagesPath, 'utf8');
+  staticMessages = JSON.parse(data);
+  console.log(`Loaded ${staticMessages.length} messages from messages.json`);
+} catch (error) {
+  console.error('Error loading messages.json:', error);
+  console.log('Generating messages in memory as fallback...');
+  // Fallback: generate messages if file doesn't exist
+  for (let i = 1; i <= 100000; i++) {
+    staticMessages.push({
+      id: i,
+      userId: `user_${Math.floor(Math.random() * 1000)}`,
+      content: `Message ${i}`,
+      timestamp: new Date(Date.now() - (100000 - i) * 60 * 1000).toISOString(),
+      isLive: false
+    });
+  }
 }
 
 let liveMessages: Message[] = [];
@@ -83,11 +93,8 @@ app.get('/api/messages', async(req: Request, res: Response) => {
   let nextCursor: number | null = null;
   
   if (typeof cursor === 'number' && !Number.isNaN(cursor)) {
-    // if a cursor is provided, return messages with IDs LESS than the cursor (older messages)
-    // This supports loading older messages when scrolling up
     paginatedMessages = sortedMessages.filter(msg => msg.id < cursor).slice(-limit);
   } else {
-    // if no cursor is provided, return the NEWEST messages (for initial load)
     paginatedMessages = sortedMessages.slice(-limit);
     console.log('Initial load: total messages:', sortedMessages.length, 'limit:', limit, 'returning IDs:', paginatedMessages[0]?.id, '-', paginatedMessages[paginatedMessages.length - 1]?.id);
   }
@@ -123,7 +130,7 @@ app.get('/api/messages/live', async(req: Request, res: Response) => {
     return res.status(500).json({ error: 'Failed to fetch live messages' });
   }
   
-  // Return live messages in order (oldest first)
+  // return live messages in order (oldest first)
   res.json({
     data: liveMessages,
     meta: {
@@ -132,9 +139,40 @@ app.get('/api/messages/live', async(req: Request, res: Response) => {
   });
 });
 
+// GET search messages endpoint - searches ALL messages (static + live)
+app.get('/api/messages/search', async(req: Request, res: Response) => {
+  await simulateDelay();
+
+  if (shouldFail()) {
+    return res.status(500).json({ error: 'Failed to search messages' });
+  }
+
+  const query = (req.query.q as string)?.toLowerCase().trim();
+  if (!query) {
+    return res.json({ data: [], meta: { total: 0, query: '' } });
+  }
+
+  const allMessages = [...staticMessages, ...liveMessages];
+  
+  const results = allMessages.filter(msg => 
+    msg.content.toLowerCase().includes(query)
+  );
+
+  const sortedResults = results.sort((a, b) => b.id - a.id).slice(0, 100);
+
+  console.log(`Search for "${query}": found ${results.length} matches, returning ${sortedResults.length}`);
+
+  res.json({
+    data: sortedResults,
+    meta: {
+      total: results.length,
+      returned: sortedResults.length,
+      query: query
+    }
+  });
+});
+
 // start server
 app.listen(port, () => {
   console.log(`Server is running on http://localhost:${port}`);
-  console.log(`Total static messages: ${staticMessages.length}`);
-  console.log(`Message order: Oldest (ID: 1) to Newest (ID: ${staticMessages.length})`);
 });
