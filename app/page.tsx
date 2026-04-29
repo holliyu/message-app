@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
 import { fetchMessages, fetchLiveMessages, Message } from '@/lib/api-client';
+import MessageItem from './MessageItem';
 
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -10,12 +11,21 @@ export default function Home() {
   const [hasMore, setHasMore] = useState(true);
   const [newMessageCount, setNewMessageCount] = useState(0);
   const [isAtBottom, setIsAtBottom] = useState(true);
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [highlightedMessageId, setHighlightedMessageId] = useState<number | null>(null);
 
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const nextCursorRef = useRef<number | undefined>(undefined);
   const liveIdsRef = useRef<Set<number>>(new Set());
   const isLoadingRef = useRef(false);
   const hasInitiallyScrolledRef = useRef(false);
+
+  interface SearchResult {
+    id: number;
+    index: number;
+    content: string;
+  }
 
   const loadMessages = useCallback(async (isRefresh = false) => {
     if (isLoadingRef.current) return;
@@ -108,11 +118,78 @@ export default function Home() {
     setIsAtBottom(true);
   }, []);
 
+  const performSearch = useCallback((query: string) => {
+    setSearchQuery(query);
+
+    if (!query.trim()) {
+      setSearchResults([]);
+      return;
+  }
+
+  const results: SearchResult[] = [];
+    messages.forEach((message, index) => {
+      if (message.content.toLowerCase().includes(query.toLowerCase())) {
+        results.push({
+          id: message.id,
+          index: index,
+          content: message.content.substring(0, 100) // preview
+        });
+      }
+    });
+    setSearchResults(results);
+    setSearchQuery(query);
+  }, [messages]);
+
+  // Jump to a specific search result
+  const jumpToResult = useCallback((resultIndex: number) => {
+    if (!virtuosoRef.current) return;
+    
+    const result = searchResults[resultIndex];
+    if (!result) return;
+    
+    // Scroll to the target index
+    virtuosoRef.current.scrollToIndex({
+      index: result.index,
+      align: 'center',
+      behavior: 'smooth'
+    });
+    
+    // Set highlight using message ID (not index) - more reliable when messages are prepended
+    setHighlightedMessageId(result.id);
+    
+    // Clear highlight after 2 seconds
+    setTimeout(() => {
+      setHighlightedMessageId(null);
+    }, 2000);
+  }, [searchResults]);
+
   return (
-    <div className="justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
+    <div className="justify-center font-sans dark:bg-black">
+      <main className="flex flex-1 w-full flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
         <h1>Welcome</h1>
-        
+        <input
+          type="text"
+          placeholder="Search messages"
+          className="border p-2 rounded w-full mb-4"
+          value={searchQuery}
+          onChange={(e) => performSearch(e.target.value)}
+        />
+        {/* Search Results Dropdown */}
+        {searchResults.length > 0 && (
+          <div className="mt-2 border rounded max-h-48 overflow-y-auto">
+            {searchResults.map((result, idx) => (
+              <div
+                key={result.id}
+                onClick={() => jumpToResult(idx)}
+                className="p-2 hover:bg-gray-100 cursor-pointer border-b"
+              >
+                <div className="text-sm text-gray-600 truncate">
+                  {result.content}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
         {/* New message indicator - Virtuoso's sticky footer handles this elegantly */}
         {newMessageCount > 0 && !isAtBottom && (
           <button
@@ -152,12 +229,15 @@ export default function Home() {
             atTopStateChange={handleReachedTop}
             overscan={200}
             itemContent={(index, message) => (
-              <div style={{ padding: '12px', borderBottom: '1px solid #e5e7eb' }}>
-                <p style={{ margin: 0, fontWeight: 500 }}>{message.content}</p>
-                <small style={{ color: '#6b7280' }}>
-                  {new Date(message.timestamp).toLocaleString()}
-                </small>
-              </div>
+              <MessageItem
+                message={message}
+                isHighlighted={highlightedMessageId === message.id}
+                onHighlightComplete={() => {
+                  if (highlightedMessageId === message.id) {
+                    setHighlightedMessageId(null);
+                  }
+                }}
+              />
             )}
             components={{
               // Show loading indicator at top when loading older messages
