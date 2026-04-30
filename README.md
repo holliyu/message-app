@@ -1,6 +1,6 @@
 # Message App
 
-A high-performance message viewer built with Next.js and React, designed to handle 100,000+ messages with virtualization, live updates, and full-text search.
+A high-performance message viewer built with Next.js and React.
 
 ## Features
 
