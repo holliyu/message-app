@@ -46,6 +46,13 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000) to view the application.
 
+## Running Jest tests
+
+```bash
+# To run jest tests
+npm run test
+```
+
 ## Project Structure
 
 ```
@@ -80,3 +87,7 @@ message-app/
 - **react-virtuoso** - Virtual list component
 - **Express** - Mock server
 - **TypeScript** - Type safety
+
+## Future actions
+- Tidy up jests tests and make them more understandable
+- Improve styling, with more animations for loading
