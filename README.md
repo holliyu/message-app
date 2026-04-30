@@ -91,3 +91,5 @@ message-app/
 ## Future actions
 - Tidy up jests tests and make them more understandable
 - Improve styling, with more animations for loading
+- Fix tech debt and shift api to next js - node with express was used for initial setup for ease
+- Improve smooth scrolling actions
