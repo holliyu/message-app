@@ -1,36 +1,82 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Message App
+
+A high-performance message viewer built with Next.js and React, designed to handle 100,000+ messages with virtualization, live updates, and full-text search.
+
+## Features
+
+### Backend (Mock Server)
+
+- **Data Source**: Uses a local `messages.json` file containing 100,000 unique message entries
+- **API Endpoints**: API endpoints built to support processes such as fetching messages for display, and for searching for particular messages
+- **Live Injection**: Background process generates a new mock message every 3–5 seconds
+
+### Frontend (React + TypeScript)
+
+- **Virtualization**: Uses `react-virtuoso` to render only visible messages, preventing memory leaks and UI lag
+- **Live Messaging**: Live messages displayed as they appear
+- **Search functionality**: Search functionality with highlighting to identify selected search results
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
+
+- Node.js 18+
+- npm
+
+### Installation
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# Install dependencies
+npm install
+
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Running the Application
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+# To run both servers at the same time
+npm run dev:all
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+# Terminal 1: Start the mock server (port 3001)
+npm run dev:mock
 
-## Learn More
+# Terminal 2: Start the Next.js frontend (port 3000)
+npm run dev
+```
 
-To learn more about Next.js, take a look at the following resources:
+Open [http://localhost:3000](http://localhost:3000) to view the application.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Project Structure
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```
+message-app/
+├── app/
+│   ├── page.tsx           # Main page with Virtuoso virtual list
+│   ├── MessageItem.tsx    # Individual message component with highlight support
+│   ├── SearchBar.tsx      # Search component with API integration
+│   ├── layout.tsx         # Root layout
+│   └── globals.css        # Global styles
+├── lib/
+│   └── api-client.ts      # API client with typed interfaces
+├── mock-server/
+│   ├── server.ts          # Express mock server
+│   ├── messages.json      # 100,000 message data file (generated)
+│   └── package.json       # Mock server dependencies
+└── README.md
+```
 
-## Deploy on Vercel
+## API Endpoints
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/messages` | Fetch paginated messages (50 per page) |
+| `GET /api/messages/live` | Fetch live messages |
+| `GET /api/messages/search?q={query}` | Search all 100,000 messages |
+| `GET /api/health` | Health check endpoint |
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Key Technologies
+
+- **Next.js 16** - React framework
+- **react-virtuoso** - Virtual list component
+- **Express** - Mock server
+- **TypeScript** - Type safety

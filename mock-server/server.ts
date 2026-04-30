@@ -1,8 +1,10 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
+import * as fs from 'fs';
+import * as path from 'path';
 
 const app = express();
-const port = 3001; 
+const port = 3001;
 
 // enable URL-encoded form data parsing
 app.use(express.urlencoded({ extended: true }));
@@ -16,7 +18,6 @@ app.get('/api/health', (req: Request, res: Response) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// creating message object
 interface Message {
   id: number;
   userId: string;
@@ -25,20 +26,15 @@ interface Message {
   isLive: boolean;
 }
 
-// creating array of 100,000 messages
-const staticMessages: Message[] = [];
-
-for (let i = 1; i <= 100000; i++) {
-  staticMessages.push({
-    id: i,
-    userId: `user_${Math.floor(Math.random() * 1000)}`,
-    content: `Message ${i}`,
-    timestamp: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString(),
-    isLive: false
-  });
+let staticMessages: Message[] = [];
+try {
+  const messagesPath = path.join(__dirname, 'messages.json');
+  const data = fs.readFileSync(messagesPath, 'utf8');
+  staticMessages = JSON.parse(data);
+} catch (error) {
+  console.error('Error loading messages.json:', error);
 }
 
-// creating empty array for live messages incoming
 let liveMessages: Message[] = [];
 let nextId = 100001;
 
@@ -47,20 +43,23 @@ setInterval(() => {
   const newMessage: Message = {
     id: nextId++,
     userId: `live_user_${Math.floor(Math.random() * 50)}`,
-    content: "New message",
+    content: `New live message`,
     timestamp: new Date().toISOString(),
     isLive: true
   };
   
-  liveMessages.unshift(newMessage);
-  liveMessages = liveMessages.slice(0, 100);
+  // adds live messages to the end of the array (newest last)
+  liveMessages.push(newMessage);
+  if (liveMessages.length > 100) {
+    liveMessages = liveMessages.slice(-100);
+  }
 }, Math.random() * 2000 + 3000);
 
 // setting 5% failure rate through delayed responses
 const simulateDelay = () => new Promise(resolve => setTimeout(resolve, Math.random() * 500 + 500));
 const shouldFail = () => Math.random() < 0.05;
 
-// get messages api endpoint
+// GET messages api endpoint
 app.get('/api/messages', async(req: Request, res: Response) => {
   await simulateDelay();
 
@@ -71,19 +70,27 @@ app.get('/api/messages', async(req: Request, res: Response) => {
   const cursor = req.query.cursor ? parseInt(req.query.cursor as string) : undefined;
   const limit = Math.min(100, parseInt(req.query.limit as string) || 50);
 
-  const allMessages = [...liveMessages, ...staticMessages];
-  const sortedMessages = [...allMessages].sort((a, b) => b.id - a.id);
-
-  const paginatedMessages = typeof cursor === 'number' && !Number.isNaN(cursor)
-    ? sortedMessages.filter(msg => msg.id < cursor).slice(0, limit)
-    : sortedMessages.slice(0, limit);
-
-  const nextCursor = paginatedMessages.length > 0
-    ? paginatedMessages[paginatedMessages.length - 1].id
-    : null;
-
-  const minMessageId = sortedMessages.length > 0 ? sortedMessages[sortedMessages.length - 1].id : null;
-  const hasMore = nextCursor !== null && minMessageId !== null && nextCursor > minMessageId;
+  // combine existing and live messages
+  const allMessages = [...staticMessages, ...liveMessages];
+  
+  const sortedMessages = [...allMessages].sort((a, b) => a.id - b.id);
+  
+  let paginatedMessages: Message[];
+  let nextCursor: number | null = null;
+  
+  if (typeof cursor === 'number' && !Number.isNaN(cursor)) {
+    paginatedMessages = sortedMessages.filter(msg => msg.id < cursor).slice(-limit);
+  } else {
+    paginatedMessages = sortedMessages.slice(-limit);
+  }
+  
+  if (paginatedMessages.length > 0) {
+    const firstMessage = paginatedMessages[0];
+    const hasMoreMessages = sortedMessages.some(msg => msg.id < firstMessage.id);
+    nextCursor = hasMoreMessages ? firstMessage.id : null;
+  }
+  
+  const hasMore = nextCursor !== null;
 
   res.json({
     data: paginatedMessages,
@@ -94,12 +101,13 @@ app.get('/api/messages', async(req: Request, res: Response) => {
     },
     meta: {
       hasLiveMessages: liveMessages.length > 0,
-      liveCount: liveMessages.length
+      liveCount: liveMessages.length,
+      totalMessages: sortedMessages.length
     }
   });
 });
 
-// live messages api endpoint
+// GET live messages endpoint 
 app.get('/api/messages/live', async(req: Request, res: Response) => {
   await simulateDelay();
 
@@ -107,10 +115,42 @@ app.get('/api/messages/live', async(req: Request, res: Response) => {
     return res.status(500).json({ error: 'Failed to fetch live messages' });
   }
   
+  // return live messages in order (oldest first)
   res.json({
     data: liveMessages,
     meta: {
       liveCount: liveMessages.length
+    }
+  });
+});
+
+// GET search messages endpoint - searches both static and live messages
+app.get('/api/messages/search', async(req: Request, res: Response) => {
+  await simulateDelay();
+
+  if (shouldFail()) {
+    return res.status(500).json({ error: 'Failed to search messages' });
+  }
+
+  const query = (req.query.q as string)?.toLowerCase().trim();
+  if (!query) {
+    return res.json({ data: [], meta: { total: 0, query: '' } });
+  }
+
+  const allMessages = [...staticMessages, ...liveMessages];
+  
+  const results = allMessages.filter(msg => 
+    msg.content.toLowerCase().includes(query)
+  );
+
+  const sortedResults = results.sort((a, b) => b.id - a.id).slice(0, 100);
+
+  res.json({
+    data: sortedResults,
+    meta: {
+      total: results.length,
+      returned: sortedResults.length,
+      query: query
     }
   });
 });

@@ -28,6 +28,15 @@ export interface LiveMessagesResponse {
   };
 }
 
+export interface SearchMessagesResponse {
+  data: Message[];
+  meta: {
+    total: number;
+    returned: number;
+    query: string;
+  };
+}
+
 export async function fetchMessages(cursor?: number, limit: number = 50): Promise<MessagesResponse> {
   const params = new URLSearchParams();
   if (cursor !== undefined) {
@@ -55,4 +64,26 @@ export async function fetchLiveMessages(): Promise<LiveMessagesResponse> {
   if (!response.ok) return { data: [], meta: { liveCount: 0 } };
   const result = await response.json();
   return result as LiveMessagesResponse;
+}
+
+export async function searchMessages(query: string): Promise<SearchMessagesResponse> {
+  if (!query.trim()) {
+    return { data: [], meta: { total: 0, returned: 0, query: '' } };
+  }
+
+  const params = new URLSearchParams();
+  params.append('q', query.trim());
+
+  const response = await fetch(`${API_URL}/api/messages/search?${params.toString()}`);
+
+  if (!response.ok) {
+    if (response.status === 500) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      return searchMessages(query);
+    }
+    throw new Error(`HTTP ${response.status}`);
+  }
+
+  const result = await response.json() as SearchMessagesResponse;
+  return result;
 }
