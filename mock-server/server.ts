@@ -18,7 +18,6 @@ app.get('/api/health', (req: Request, res: Response) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// creating message object
 interface Message {
   id: number;
   userId: string;
@@ -32,20 +31,8 @@ try {
   const messagesPath = path.join(__dirname, 'messages.json');
   const data = fs.readFileSync(messagesPath, 'utf8');
   staticMessages = JSON.parse(data);
-  console.log(`Loaded ${staticMessages.length} messages from messages.json`);
 } catch (error) {
   console.error('Error loading messages.json:', error);
-  console.log('Generating messages in memory as fallback...');
-  // Fallback: generate messages if file doesn't exist
-  for (let i = 1; i <= 100000; i++) {
-    staticMessages.push({
-      id: i,
-      userId: `user_${Math.floor(Math.random() * 1000)}`,
-      content: `Message ${i}`,
-      timestamp: new Date(Date.now() - (100000 - i) * 60 * 1000).toISOString(),
-      isLive: false
-    });
-  }
 }
 
 let liveMessages: Message[] = [];
@@ -56,14 +43,13 @@ setInterval(() => {
   const newMessage: Message = {
     id: nextId++,
     userId: `live_user_${Math.floor(Math.random() * 50)}`,
-    content: `New message ${Date.now()}`,
+    content: `New live message`,
     timestamp: new Date().toISOString(),
     isLive: true
   };
   
   // adds live messages to the end of the array (newest last)
   liveMessages.push(newMessage);
-  // Keep only last 100 live messages
   if (liveMessages.length > 100) {
     liveMessages = liveMessages.slice(-100);
   }
@@ -96,7 +82,6 @@ app.get('/api/messages', async(req: Request, res: Response) => {
     paginatedMessages = sortedMessages.filter(msg => msg.id < cursor).slice(-limit);
   } else {
     paginatedMessages = sortedMessages.slice(-limit);
-    console.log('Initial load: total messages:', sortedMessages.length, 'limit:', limit, 'returning IDs:', paginatedMessages[0]?.id, '-', paginatedMessages[paginatedMessages.length - 1]?.id);
   }
   
   if (paginatedMessages.length > 0) {
@@ -139,7 +124,7 @@ app.get('/api/messages/live', async(req: Request, res: Response) => {
   });
 });
 
-// GET search messages endpoint - searches ALL messages (static + live)
+// GET search messages endpoint - searches both static and live messages
 app.get('/api/messages/search', async(req: Request, res: Response) => {
   await simulateDelay();
 
@@ -159,8 +144,6 @@ app.get('/api/messages/search', async(req: Request, res: Response) => {
   );
 
   const sortedResults = results.sort((a, b) => b.id - a.id).slice(0, 100);
-
-  console.log(`Search for "${query}": found ${results.length} matches, returning ${sortedResults.length}`);
 
   res.json({
     data: sortedResults,

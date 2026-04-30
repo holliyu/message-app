@@ -6,10 +6,8 @@ export default function MessageItem({ message, isHighlighted, onHighlightComplet
 
     useEffect(() => {
     if (isHighlighted && itemRef.current) {
-      // Trigger reflow to ensure animation plays
       itemRef.current.scrollIntoView({ block: 'center' });
       
-      // Call cleanup after animation completes
       const timer = setTimeout(onHighlightComplete, 1000);
       return () => clearTimeout(timer);
     }
@@ -21,7 +19,7 @@ export default function MessageItem({ message, isHighlighted, onHighlightComplet
       style={{
         padding: '12px',
         borderBottom: '1px solid #e5e7eb',
-        backgroundColor: isHighlighted ? '#fef3c7' : 'transparent', // Yellow highlight
+        backgroundColor: isHighlighted ? '#fef3c7' : 'transparent', 
         transition: 'background-color 0.3s ease',
       }}
     >
